@@ -1,607 +1,305 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTube Playlist MP3 Downloader Architecture & App</title>
-    
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Font Awesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- JSZip and FileSaver for client zip creation -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        yt: {
-                            red: '#FF0000',
-                            darkRed: '#CC0000',
-                            black: '#0F0F0F',
-                            card: '#1F1F1F',
-                            border: '#383838',
-                            hover: '#272727'
-                        }
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        mono: ['Fira Code', 'monospace']
-                    }
-                }
-            }
-        }
-    </script>
-
-    <style>
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #0f0f0f; }
-        ::-webkit-scrollbar-thumb { background: #383838; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #555555; }
-        .glow-red { box-shadow: 0 0 20px rgba(255, 0, 0, 0.25); }
-    </style>
-</head>
-<body class="bg-yt-black text-gray-100 font-sans min-h-screen flex flex-col justify-between selection:bg-yt-red selection:text-white">
-
-    <header class="border-b border-yt-border bg-yt-black/90 backdrop-blur-md sticky top-0 z-50 px-4 lg:px-8 py-3.5 flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-            <div class="bg-yt-red text-white p-2 rounded-xl flex items-center justify-center shadow-lg shadow-yt-red/20">
-                <i class="fa-solid fa-cloud-arrow-down text-xl"></i>
-            </div>
-            <div>
-                <h1 class="text-xl font-bold tracking-tight flex items-center gap-2">
-                    YT Playlist <span class="bg-gradient-to-r from-yt-red to-orange-500 bg-clip-text text-transparent">MP3 Converter</span>
-                </h1>
-                <p class="text-xs text-gray-400">Client UI & Full-Stack Backend Integration Engine</p>
-            </div>
-        </div>
-
-        <div class="flex items-center gap-3">
-            <button onclick="switchTab('app')" id="tabBtnApp" class="text-xs bg-yt-red text-white px-3.5 py-2 rounded-lg font-semibold transition">
-                <i class="fa-solid fa-play mr-1.5"></i> App Converter UI
-            </button>
-            <button onclick="switchTab('backend')" id="tabBtnBackend" class="text-xs bg-yt-card hover:bg-yt-hover text-gray-300 border border-yt-border px-3.5 py-2 rounded-lg font-semibold transition">
-                <i class="fa-solid fa-server text-yt-red mr-1.5"></i> Backend Code & Setup
-            </button>
-        </div>
-    </header>
-
-    <main class="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 flex flex-col gap-8">
-
-        <div class="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start gap-4 text-xs text-amber-200">
-            <div class="p-2 bg-amber-500/20 rounded-xl text-amber-400 text-lg shrink-0">
-                <i class="fa-solid fa-triangle-exclamation"></i>
-            </div>
-            <div class="space-y-1">
-                <h4 class="font-bold text-amber-300 text-sm">Why YouTube Downloads Cannot Run Exclusively Inside Web Browsers</h4>
-                <p class="leading-relaxed">
-                    YouTube enforces strict <strong>CORS (Cross-Origin Resource Sharing)</strong> headers, encrypted signature tokens (SABR/PoToken), and rate-limiting. Web browsers block frontends from directly downloading audio streams from YouTube servers. To process actual YouTube video links into MP3s, a lightweight backend server running <strong>yt-dlp</strong> and <strong>FFmpeg</strong> is mandatory.
-                </p>
-            </div>
-        </div>
-
-        <!-- TAB 1: FRONTEND APP & DEMO -->
-        <div id="viewApp" class="space-y-8">
-            <!-- Playlist Search Form -->
-            <section class="bg-yt-card border border-yt-border rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
-                <div class="max-w-3xl mx-auto text-center mb-6">
-                    <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2">YouTube Playlist MP3 Downloader</h2>
-                    <p class="text-sm text-gray-400">Paste any public YouTube playlist URL to parse tracks, adjust audio bitrates, and simulate high-speed batch downloads.</p>
-                </div>
-
-                <form id="playlistForm" onsubmit="handleFetchPlaylist(event)" class="max-w-3xl mx-auto flex flex-col sm:flex-row gap-3">
-                    <div class="relative flex-1">
-                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-500">
-                            <i class="fa-brands fa-youtube text-lg"></i>
-                        </div>
-                        <input 
-                            type="text" 
-                            id="playlistUrl" 
-                            placeholder="https://www.youtube.com/playlist?list=PL4fGSI1pDJn6O1M0bKUzqE526_E10_bE6" 
-                            required
-                            class="w-full pl-11 pr-10 py-3.5 bg-yt-black border border-yt-border focus:border-yt-red rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-yt-red transition placeholder-gray-500"
-                        />
-                        <button type="button" onclick="document.getElementById('playlistUrl').value=''" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-white">
-                            <i class="fa-solid fa-circle-xmark"></i>
-                        </button>
-                    </div>
-                    <button 
-                        type="submit" 
-                        id="fetchBtn"
-                        class="bg-yt-red hover:bg-yt-darkRed text-white font-semibold px-6 py-3.5 rounded-xl transition flex items-center justify-center gap-2 glow-red whitespace-nowrap"
-                    >
-                        <i class="fa-solid fa-arrows-rotate" id="fetchIcon"></i>
-                        <span>Fetch Playlist</span>
-                    </button>
-                </form>
-
-                <div class="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs text-gray-400">
-                    <span class="font-medium text-gray-500">Quick Test Samples:</span>
-                    <button type="button" onclick="loadSamplePlaylist('cyberpunk')" class="hover:text-yt-red underline">Cyberpunk Lo-Fi (8 tracks)</button>
-                    <span>•</span>
-                    <button type="button" onclick="loadSamplePlaylist('topHits')" class="hover:text-yt-red underline">EDM Workout (5 tracks)</button>
-                </div>
-            </section>
-
-            <!-- Playlist Table Container -->
-            <section id="playlistSection" class="hidden space-y-6">
-                <div class="bg-yt-card border border-yt-border rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                    <div class="flex items-center gap-4">
-                        <img id="playlistCover" src="" alt="Cover" class="w-20 h-20 object-cover rounded-xl border border-yt-border shadow-md" />
-                        <div>
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-yt-red/20 text-yt-red border border-yt-red/30 mb-1 inline-block">Playlist Loaded</span>
-                            <h3 id="playlistTitle" class="text-xl font-bold text-white line-clamp-1">Playlist Title</h3>
-                            <p class="text-xs text-gray-400 mt-1 flex items-center gap-3">
-                                <span><i class="fa-solid fa-user text-gray-500 mr-1"></i><span id="playlistChannel">Channel</span></span>
-                                <span>•</span>
-                                <span><i class="fa-solid fa-list text-gray-500 mr-1"></i><span id="playlistCount">0 Tracks</span></span>
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="w-full md:w-auto flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                        <div class="flex items-center justify-between sm:justify-start gap-2 bg-yt-black/60 p-2 rounded-xl border border-yt-border">
-                            <span class="text-xs font-medium text-gray-400 pl-2">Quality:</span>
-                            <select id="globalBitrate" onchange="applyGlobalBitrate(this.value)" class="bg-yt-card text-xs text-white border border-yt-border rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-yt-red">
-                                <option value="320">320 kbps (Extreme)</option>
-                                <option value="256" selected>256 kbps (High)</option>
-                                <option value="128">128 kbps (Standard)</option>
-                            </select>
-                        </div>
-
-                        <button 
-                            id="batchDownloadBtn"
-                            onclick="startBatchDownload()" 
-                            class="bg-gradient-to-r from-yt-red to-orange-600 hover:from-yt-darkRed hover:to-orange-700 text-white font-semibold px-5 py-3 rounded-xl transition flex items-center justify-center gap-2 glow-red"
-                        >
-                            <i class="fa-solid fa-file-zipper text-lg"></i>
-                            <span>Batch Download ZIP</span>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="bg-yt-card border border-yt-border rounded-2xl overflow-hidden shadow-xl">
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-xs">
-                            <thead class="bg-yt-black/80 text-gray-400 border-b border-yt-border uppercase font-semibold tracking-wider">
-                                <tr>
-                                    <th class="p-4 w-10 text-center">
-                                        <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)" checked class="w-4 h-4 accent-yt-red rounded" />
-                                    </th>
-                                    <th class="p-4 w-12 text-center">#</th>
-                                    <th class="p-4 min-w-[240px]">Track Details</th>
-                                    <th class="p-4 min-w-[120px]">Duration</th>
-                                    <th class="p-4 min-w-[130px]">Format / Bitrate</th>
-                                    <th class="p-4 min-w-[200px]">Status</th>
-                                    <th class="p-4 min-w-[150px] text-right">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="trackListTable" class="divide-y divide-yt-border/50 text-gray-300">
-                                <!-- Track Rows Populated dynamically -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
-        </div>
-
-        <div id="viewBackend" class="hidden space-y-6">
-            <div class="bg-yt-card border border-yt-border rounded-2xl p-6 space-y-4">
-                <h3 class="text-xl font-bold text-white flex items-center gap-2">
-                    <i class="fa-solid fa-server text-yt-red"></i> Node.js + Express + yt-dlp Backend Code
-                </h3>
-                <p class="text-xs text-gray-400 leading-relaxed">
-                    To make this application completely functional with real YouTube video streams, deploy this Node.js script. It invokes <code class="text-yt-red font-mono">yt-dlp</code> and pipes converted MP3 audio directly back to the client.
-                </p>
-
-                <div class="space-y-2">
-                    <span class="text-xs font-semibold text-gray-300">1. Setup Server Directory & Dependencies:</span>
-                    <pre class="bg-yt-black p-3.5 rounded-xl border border-yt-border text-emerald-400 font-mono text-xs overflow-x-auto">
-mkdir yt-mp3-backend && cd yt-mp3-backend
-npm init -y
-npm install express cors yt-dlp-exec fluent-ffmpeg
-# Ensure FFmpeg and yt-dlp binary are installed on system path</pre>
-                </div>
-
-                <div class="space-y-2">
-                    <span class="text-xs font-semibold text-gray-300">2. Production Ready Server Implementation (<code class="text-yt-red">server.js</code>):</span>
-                    <pre class="bg-yt-black p-4 rounded-xl border border-yt-border text-gray-300 font-mono text-xs leading-relaxed overflow-x-auto">
-const express = require('express');
-const cors = require('cors');
-const { exec } = require('child_process');
-const ytdlp = require('yt-dlp-exec');
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-// Endpoint 1: Extract Playlist Details
-app.get('/api/playlist', async (req, res) => {
-    const playlistUrl = req.query.url;
-    if (!playlistUrl) return res.status(400).json({ error: 'Playlist URL required' });
-
-    try {
-        const output = await ytdlp(playlistUrl, {
-            dumpSingleJson: true,
-            flatPlaylist: true,
-            noWarnings: true
-        });
-
-        const tracks = output.entries.map((entry, index) => ({
-            id: entry.id,
-            title: entry.title,
-            channel: entry.uploader || output.uploader || 'YouTube Channel',
-            duration: entry.duration ? `${Math.floor(entry.duration/60)}:${String(entry.duration%60).padStart(2,'0')}` : '03:30',
-            seconds: entry.duration || 210,
-            url: `https://www.youtube.com/watch?v=${entry.id}`
-        }));
-
-        res.json({
-            title: output.title || 'YouTube Playlist',
-            channel: output.uploader || 'YouTube Creator',
-            tracks
-        });
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to extract playlist metadata', details: err.message });
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube MP3 Downloader</title>
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: #1e293b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-hover: #0284c7;
+      --border: #334155;
     }
-});
 
-// Endpoint 2: Stream Live Audio Conversion as MP3
-app.get('/api/download-mp3', (req, res) => {
-    const videoUrl = req.query.url;
-    const quality = req.query.quality || '256';
-    const title = req.query.title || 'audio';
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
 
-    if (!videoUrl) return res.status(400).send('Missing video URL');
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
 
-    const sanitizedTitle = title.replace(/[/\\?%*:|"<>]/g, '_');
-    
-    res.header('Content-Type', 'audio/mpeg');
-    res.header('Content-Disposition', `attachment; filename="${encodeURIComponent(sanitizedTitle)}.mp3"`);
+    .container {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 600px;
+      padding: 28px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    }
 
-    // Stream directly through yt-dlp & FFmpeg
-    const subprocess = ytdlp.exec(videoUrl, {
-        extractAudio: true,
-        audioFormat: 'mp3',
-        audioQuality: `${quality}k`,
-        output: '-' // Pipe stream to stdout
-    });
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+      color: var(--text-main);
+    }
 
-    subprocess.stdout.pipe(res);
+    p.subtitle {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+    }
 
-    req.on('close', () => {
-        subprocess.kill();
-    });
-});
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
 
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));</pre>
-                </div>
-            </div>
-        </div>
-    </main>
+    label {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
 
-    <div id="audioPreviewModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-        <div class="bg-yt-card border border-yt-border rounded-2xl max-w-md w-full p-6 text-center shadow-2xl relative">
-            <button onclick="closeAudioPreview()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
-                <i class="fa-solid fa-xmark text-lg"></i>
-            </button>
-            <div class="w-20 h-20 mx-auto mb-4 rounded-xl overflow-hidden border border-yt-border">
-                <img id="previewThumbnail" src="" class="w-full h-full object-cover" alt="Thumbnail" />
-            </div>
-            <h4 id="previewTitle" class="font-bold text-white text-base line-clamp-1 mb-1">Track Title</h4>
-            <p id="previewArtist" class="text-xs text-gray-400 mb-4">Artist Name</p>
-            <p class="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-2.5">
-                <i class="fa-solid fa-waveform mr-1"></i> Synthesizing Web Audio Synth Preview Tone...
-            </p>
-        </div>
+    input, select {
+      background-color: var(--bg-color);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 12px 14px;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--primary);
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .row .form-group {
+      flex: 1;
+    }
+
+    button {
+      background-color: var(--primary);
+      color: #000;
+      font-weight: 600;
+      border: none;
+      padding: 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1rem;
+      width: 100%;
+      margin-top: 8px;
+      transition: background-color 0.2s;
+    }
+
+    button:hover {
+      background-color: var(--primary-hover);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .status-msg {
+      margin-top: 16px;
+      font-size: 0.875rem;
+      text-align: center;
+      min-height: 20px;
+    }
+
+    .status-msg.error {
+      color: #f87171;
+    }
+
+    .status-msg.success {
+      color: #4ade80;
+    }
+
+    .track-list {
+      margin-top: 20px;
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 250px;
+      overflow-y: auto;
+    }
+
+    .track-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background-color: var(--bg-color);
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 0.875rem;
+    }
+
+    .track-info {
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      margin-right: 12px;
+    }
+
+    .track-title {
+      font-weight: 600;
+    }
+
+    .track-channel {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    .btn-download-sm {
+      background-color: var(--border);
+      color: var(--text-main);
+      padding: 6px 12px;
+      font-size: 0.75rem;
+      width: auto;
+      margin-top: 0;
+    }
+
+    .btn-download-sm:hover {
+      background-color: var(--primary);
+      color: #000;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>YouTube MP3 Downloader</h1>
+    <p class="subtitle">Extract audio and download tracks directly to MP3</p>
+
+    <div class="form-group">
+      <label for="videoUrl">YouTube URL</label>
+      <input 
+        type="text" 
+        id="videoUrl" 
+        placeholder="https://www.youtube.com/watch?v=k9DMXBFHEH4"
+        value="https://www.youtube.com/watch?v=k9DMXBFHEH4"
+      >
     </div>
 
-    <!-- Toast Container -->
-    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+    <div class="row">
+      <div class="form-group">
+        <label for="bitrate">Audio Quality</label>
+        <select id="bitrate">
+          <option value="128">128 kbps (Fast)</option>
+          <option value="192" selected>192 kbps (Standard)</option>
+          <option value="256">256 kbps (High)</option>
+          <option value="320">320 kbps (Best)</option>
+        </select>
+      </div>
+    </div>
 
-    <script>
-        let currentPlaylistData = [];
-        let isBatchProcessing = false;
+    <button id="fetchBtn" onclick="handleFetch()">Fetch Details</button>
+    <button id="downloadBtn" onclick="handleDirectDownload()" style="margin-top: 8px; background-color: var(--border); color: var(--text-main);">Download Direct MP3</button>
 
-        const SAMPLE_PLAYLISTS = {
-            cyberpunk: {
-                title: "Cyberpunk 2077 Synthwave & Lo-Fi Mix",
-                channel: "CyberSound Hub",
-                cover: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&q=80",
-                tracks: [
-                    { id: "v1", title: "Neon Skyline Echoes", channel: "NightCity Music", duration: "03:45", seconds: 225 },
-                    { id: "v2", title: "Cybernetic Pulse (320kbps Remaster)", channel: "Synth Master", duration: "04:12", seconds: 252 },
-                    { id: "v3", title: "Midnight Highway Drive", channel: "Retro Wave", duration: "02:58", seconds: 178 },
-                    { id: "v4", title: "Chrome & Glass Dreams", channel: "CyberSound Hub", duration: "05:10", seconds: 310 },
-                    { id: "v5", title: "Sub-zero Bass Drops", channel: "Bass Horizon", duration: "03:30", seconds: 210 },
-                    { id: "v6", title: "Glitch in the Matrix Chill", channel: "LoFi Station", duration: "04:05", seconds: 245 },
-                    { id: "v7", title: "Neural Link Frequency", channel: "Future Waves", duration: "03:15", seconds: 195 },
-                    { id: "v8", title: "Dystopian Sunset", channel: "Synth Master", duration: "04:40", seconds: 280 }
-                ]
-            },
-            topHits: {
-                title: "Top Workout EDM Hits 2026",
-                channel: "Bass Nation",
-                cover: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&q=80",
-                tracks: [
-                    { id: "v9", title: "Adrenaline Surge Peak", channel: "DJ Rush", duration: "03:10", seconds: 190 },
-                    { id: "v10", title: "Hyperdrive Stadium Mix", channel: "Electronic Pulse", duration: "03:50", seconds: 230 },
-                    { id: "v11", title: "Unstoppable Tempo", channel: "Workout EDM", duration: "02:45", seconds: 165 },
-                    { id: "v12", title: "Limitless Horizon", channel: "Bass Nation", duration: "04:15", seconds: 255 },
-                    { id: "v13", title: "Festival Mainstage Anthem", channel: "DJ Rush", duration: "03:35", seconds: 215 }
-                ]
-            }
-        };
+    <div id="status" class="status-msg"></div>
 
-        function switchTab(tab) {
-            const viewApp = document.getElementById('viewApp');
-            const viewBackend = document.getElementById('viewBackend');
-            const btnApp = document.getElementById('tabBtnApp');
-            const btnBackend = document.getElementById('tabBtnBackend');
+    <div id="trackList" class="track-list" style="display: none;"></div>
+  </div>
 
-            if (tab === 'app') {
-                viewApp.classList.remove('hidden');
-                viewBackend.classList.add('hidden');
-                btnApp.className = 'text-xs bg-yt-red text-white px-3.5 py-2 rounded-lg font-semibold transition';
-                btnBackend.className = 'text-xs bg-yt-card hover:bg-yt-hover text-gray-300 border border-yt-border px-3.5 py-2 rounded-lg font-semibold transition';
-            } else {
-                viewApp.classList.add('hidden');
-                viewBackend.classList.remove('hidden');
-                btnBackend.className = 'text-xs bg-yt-red text-white px-3.5 py-2 rounded-lg font-semibold transition';
-                btnApp.className = 'text-xs bg-yt-card hover:bg-yt-hover text-gray-300 border border-yt-border px-3.5 py-2 rounded-lg font-semibold transition';
-            }
-        }
+  <script>
+    const API_BASE = 'http://localhost:4000/api';
 
-        function handleFetchPlaylist(e) {
-            e.preventDefault();
-            const urlInput = document.getElementById('playlistUrl').value.trim();
-            if (!urlInput) return;
+    async function handleFetch() {
+      const url = document.getElementById('videoUrl').value.trim();
+      const statusEl = document.getElementById('status');
+      const trackListEl = document.getElementById('trackList');
+      const fetchBtn = document.getElementById('fetchBtn');
 
-            setFetchingState(true);
+      if (!url) {
+        showStatus('Please enter a valid YouTube URL', 'error');
+        return;
+      }
 
-            setTimeout(() => {
-                setFetchingState(false);
-                let selectedKey = urlInput.toLowerCase().includes('edm') ? 'topHits' : 'cyberpunk';
-                loadPlaylistData(SAMPLE_PLAYLISTS[selectedKey]);
-                showToast('Playlist retrieved successfully!', 'success');
-            }, 1000);
-        }
+      showStatus('Fetching video details...', '');
+      fetchBtn.disabled = true;
+      trackListEl.style.display = 'none';
+      trackListEl.innerHTML = '';
 
-        function loadSamplePlaylist(key) {
-            document.getElementById('playlistUrl').value = `https://www.youtube.com/playlist?list=PL_SAMPLE_${key.toUpperCase()}`;
-            setFetchingState(true);
-            setTimeout(() => {
-                setFetchingState(false);
-                loadPlaylistData(SAMPLE_PLAYLISTS[key]);
-                showToast(`Loaded ${SAMPLE_PLAYLISTS[key].title}`, 'info');
-            }, 700);
-        }
+      try {
+        const res = await fetch(`${API_BASE}/playlist?url=${encodeURIComponent(url)}`);
+        const data = await res.json();
 
-        function setFetchingState(isFetching) {
-            const btn = document.getElementById('fetchBtn');
-            const icon = document.getElementById('fetchIcon');
-            btn.disabled = isFetching;
-            icon.className = isFetching ? 'fa-solid fa-spinner animate-spin' : 'fa-solid fa-arrows-rotate';
-        }
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch video information');
 
-        function loadPlaylistData(playlistData) {
-            document.getElementById('playlistCover').src = playlistData.cover;
-            document.getElementById('playlistTitle').textContent = playlistData.title;
-            document.getElementById('playlistChannel').textContent = playlistData.channel;
-            document.getElementById('playlistCount').textContent = `${playlistData.tracks.length} Tracks`;
+        showStatus(`Found ${data.tracks.length} track(s)`, 'success');
+        renderTracks(data.tracks);
+      } catch (err) {
+        showStatus(err.message, 'error');
+      } finally {
+        fetchBtn.disabled = false;
+      }
+    }
 
-            currentPlaylistData = playlistData.tracks.map((tr, idx) => ({
-                ...tr,
-                index: idx + 1,
-                selected: true,
-                bitrate: '256',
-                status: 'idle',
-                progress: 0,
-                thumb: `https://picsum.photos/seed/${tr.id}/120/90`
-            }));
+    function renderTracks(tracks) {
+      const trackListEl = document.getElementById('trackList');
+      trackListEl.style.display = 'flex';
 
-            document.getElementById('playlistSection').classList.remove('hidden');
-            renderTrackTable();
-        }
+      tracks.forEach(track => {
+        const item = document.createElement('div');
+        item.className = 'track-item';
+        item.innerHTML = `
+          <div class="track-info">
+            <div class="track-title">${escapeHtml(track.title)}</div>
+            <div class="track-channel">${escapeHtml(track.channel)} • ${track.duration}</div>
+          </div>
+          <button class="btn-download-sm" onclick="downloadAudio('${escapeHtml(track.url)}', '${escapeHtml(track.title)}')">Save MP3</button>
+        `;
+        trackListEl.appendChild(item);
+      });
+    }
 
-        function renderTrackTable() {
-            const tbody = document.getElementById('trackListTable');
-            tbody.innerHTML = '';
+    function handleDirectDownload() {
+      const url = document.getElementById('videoUrl').value.trim();
+      if (!url) {
+        showStatus('Please enter a YouTube URL', 'error');
+        return;
+      }
+      downloadAudio(url, 'audio');
+    }
 
-            currentPlaylistData.forEach((track) => {
-                const tr = document.createElement('tr');
-                tr.className = `hover:bg-yt-hover/60 transition ${track.selected ? '' : 'opacity-50'}`;
+    function downloadAudio(videoUrl, title) {
+      const quality = document.getElementById('bitrate').value;
+      showStatus('Starting MP3 conversion stream...', 'success');
 
-                tr.innerHTML = `
-                    <td class="p-4 text-center">
-                        <input type="checkbox" ${track.selected ? 'checked' : ''} onchange="toggleTrack('${track.id}', this.checked)" class="w-4 h-4 accent-yt-red rounded" />
-                    </td>
-                    <td class="p-4 text-center text-gray-500 font-medium">${track.index}</td>
-                    <td class="p-4">
-                        <div class="flex items-center gap-3">
-                            <img src="${track.thumb}" class="w-12 h-9 rounded object-cover border border-yt-border" />
-                            <div>
-                                <h5 class="font-semibold text-white text-xs line-clamp-1">${track.title}</h5>
-                                <p class="text-[11px] text-gray-400">${track.channel}</p>
-                            </div>
-                        </div>
-                    </td>
-                    <td class="p-4 text-gray-400 font-mono">${track.duration}</td>
-                    <td class="p-4">
-                        <select onchange="updateBitrate('${track.id}', this.value)" class="bg-yt-black text-xs text-gray-200 border border-yt-border rounded px-2 py-1">
-                            <option value="320" ${track.bitrate === '320' ? 'selected' : ''}>320 kbps MP3</option>
-                            <option value="256" ${track.bitrate === '256' ? 'selected' : ''}>256 kbps MP3</option>
-                            <option value="128" ${track.bitrate === '128' ? 'selected' : ''}>128 kbps MP3</option>
-                        </select>
-                    </td>
-                    <td class="p-4">${renderStatusCell(track)}</td>
-                    <td class="p-4 text-right">
-                        <button onclick="downloadSingleTrack('${track.id}')" ${track.status==='converting'?'disabled':''} class="bg-yt-black hover:bg-yt-red text-gray-300 hover:text-white border border-yt-border px-3 py-1.5 rounded-lg text-xs transition">
-                            <i class="fa-solid ${track.status === 'ready' ? 'fa-check text-emerald-400' : 'fa-download'} mr-1"></i>
-                            ${track.status === 'ready' ? 'Re-Download' : 'MP3'}
-                        </button>
-                    </td>
-                `;
+      const downloadEndpoint = `${API_BASE}/download-mp3?url=${encodeURIComponent(videoUrl)}&quality=${quality}&title=${encodeURIComponent(title)}`;
+      window.location.href = downloadEndpoint;
+    }
 
-                tbody.appendChild(tr);
-            });
-        }
+    function showStatus(text, type) {
+      const statusEl = document.getElementById('status');
+      statusEl.textContent = text;
+      statusEl.className = `status-msg ${type}`;
+    }
 
-        function renderStatusCell(track) {
-            if (track.status === 'idle') {
-                return `<span class="text-xs text-gray-500">Ready</span>`;
-            } else if (track.status === 'converting') {
-                return `
-                    <div class="space-y-1">
-                        <div class="flex justify-between text-[10px] font-mono">
-                            <span class="text-yt-red animate-pulse">Converting...</span>
-                            <span>${track.progress}%</span>
-                        </div>
-                        <div class="w-full bg-yt-black h-1.5 rounded-full overflow-hidden">
-                            <div class="bg-yt-red h-full transition-all duration-200" style="width: ${track.progress}%"></div>
-                        </div>
-                    </div>
-                `;
-            } else {
-                return `<span class="text-xs text-emerald-400 font-medium"><i class="fa-solid fa-circle-check mr-1"></i> Converted</span>`;
-            }
-        }
-
-        function toggleTrack(id, checked) {
-            const track = currentPlaylistData.find(t => t.id === id);
-            if (track) track.selected = checked;
-            renderTrackTable();
-        }
-
-        function toggleSelectAll(checked) {
-            currentPlaylistData.forEach(t => t.selected = checked);
-            renderTrackTable();
-        }
-
-        function applyGlobalBitrate(val) {
-            currentPlaylistData.forEach(t => t.bitrate = val);
-            renderTrackTable();
-        }
-
-        function updateBitrate(id, val) {
-            const track = currentPlaylistData.find(t => t.id === id);
-            if (track) track.bitrate = val;
-        }
-
-        function downloadSingleTrack(id) {
-            const track = currentPlaylistData.find(t => t.id === id);
-            if (!track) return;
-
-            track.status = 'converting';
-            track.progress = 0;
-            renderTrackTable();
-
-            let timer = setInterval(() => {
-                track.progress += 25;
-                if (track.progress >= 100) {
-                    track.progress = 100;
-                    track.status = 'ready';
-                    clearInterval(timer);
-                    renderTrackTable();
-                    triggerDownload(track.title);
-                    showToast(`Downloaded: ${track.title}.mp3`, 'success');
-                } else {
-                    renderTrackTable();
-                }
-            }, 200);
-        }
-
-        async function startBatchDownload() {
-            const selected = currentPlaylistData.filter(t => t.selected);
-            if (!selected.length) return showToast('No tracks selected', 'error');
-
-            const btn = document.getElementById('batchDownloadBtn');
-            btn.disabled = true;
-
-            const zip = new JSZip();
-            const folder = zip.folder("MP3_Playlist");
-
-            for (let track of selected) {
-                track.status = 'converting';
-                track.progress = 0;
-                renderTrackTable();
-
-                await new Promise(res => {
-                    let timer = setInterval(() => {
-                        track.progress += 34;
-                        if (track.progress >= 100) {
-                            track.progress = 100;
-                            track.status = 'ready';
-                            clearInterval(timer);
-                            renderTrackTable();
-
-                            const dummyBlob = new Blob([new Float32Array(44100)], { type: 'audio/mp3' });
-                            folder.file(`${track.title.replace(/[/\\?%*:|"<>]/g, '_')}.mp3`, dummyBlob);
-                            res();
-                        } else {
-                            renderTrackTable();
-                        }
-                    }, 150);
-                });
-            }
-
-            zip.generateAsync({ type: "blob" }).then((content) => {
-                saveAs(content, "Playlist_MP3_Package.zip");
-                btn.disabled = false;
-                showToast('ZIP archive downloaded successfully! 🎉', 'success');
-            });
-        }
-
-        function triggerDownload(title) {
-            const blob = new Blob([new Float32Array(44100)], { type: 'audio/mp3' });
-            saveAs(blob, `${title.replace(/[/\\?%*:|"<>]/g, '_')}.mp3`);
-        }
-
-        let audioCtx;
-        function playAudioPreview(title, artist, thumb) {
-            document.getElementById('previewTitle').textContent = title;
-            document.getElementById('previewArtist').textContent = artist;
-            document.getElementById('previewThumbnail').src = thumb;
-            document.getElementById('audioPreviewModal').classList.remove('hidden');
-
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            let osc = audioCtx.createOscillator();
-            let gain = audioCtx.createGain();
-            osc.frequency.value = 350;
-            gain.gain.value = 0.05;
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start();
-            setTimeout(() => osc.stop(), 1500);
-        }
-
-        function closeAudioPreview() {
-            document.getElementById('audioPreviewModal').classList.add('hidden');
-        }
-
-        function showToast(msg, type = 'info') {
-            const container = document.getElementById('toastContainer');
-            const toast = document.createElement('div');
-            toast.className = `bg-yt-card text-white text-xs px-4 py-3 rounded-xl border border-yt-border shadow-xl flex items-center gap-2 pointer-events-auto`;
-            toast.innerHTML = `<i class="fa-solid fa-circle-info text-yt-red"></i> <span>${msg}</span>`;
-            container.appendChild(toast);
-            setTimeout(() => toast.remove(), 3500);
-        }
-
-        window.addEventListener('DOMContentLoaded', () => {
-            loadSamplePlaylist('cyberpunk');
-        });
-    </script>
+    function escapeHtml(text) {
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
 </body>
 </html>
